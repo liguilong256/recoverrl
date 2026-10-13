@@ -35,6 +35,8 @@ jobs:
       - run: python -m recoverrl.training.launch --dry-run --steps 1 --output runs/ci-launch
       - run: python scripts/report_baselines.py --output runs/baseline_smoke.json
       - run: python -c "from pathlib import Path; assert Path('runs/baseline_smoke.json').read_bytes() == Path('reports/baseline_smoke.json').read_bytes()"
+      - run: python scripts/report_research_baselines.py --output runs/research_baselines.json
+      - run: python -c "from pathlib import Path; assert Path('runs/research_baselines.json').read_bytes() == Path('reports/research_baselines.json').read_bytes()"
       - uses: actions/upload-artifact@v4
         with:
           name: cpu-checks-${{ matrix.os }}-${{ matrix.python }}

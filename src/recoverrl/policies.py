@@ -17,6 +17,10 @@ class Decision:
     prompt_tokens: int | None = 0
 
 
+class PolicyBudgetExceeded(Exception):
+    """No room remains for another model response; settle the environment."""
+
+
 def action(tool: str, **arguments) -> dict:
     return {"tool": tool, "arguments": arguments}
 
@@ -27,10 +31,12 @@ class ScriptedPolicy:
     once: stop on ambiguous outcome. retry: repeat failed batch once.
     verify: use stable keys when available; otherwise wait for the documented
     commit + visibility bound, query state and issue only missing operations.
+    query_first: query immediately without keys; act on confirmed writes, but
+    treat a negative read as inconclusive until the commit + visibility bound.
     """
 
     def __init__(self, mode: str):
-        if mode not in ("once", "retry", "verify"):
+        if mode not in ("once", "retry", "verify", "query_first"):
             raise ValueError(f"Unknown policy: {mode}")
         self.mode = mode
 
@@ -42,9 +48,33 @@ class ScriptedPolicy:
         self.retries = 0
         self.batch_number = 0
         self.phase = "plan"
+        self.safe_read_at = None
 
     def _next(self, observation: dict) -> dict:
         result = observation["result"]
+        if self.phase == "early_read":
+            if not result.get("ok"):
+                return action("finish", status="uncertain")
+            records = result["tickets"]
+            if len({r["request_id"] for r in records}) != len(records):
+                return action("finish", status="uncertain")
+            for record in records:
+                self.known[record["request_id"]] = record["ticket_id"]
+            missing = [item for item in self.pending["arguments"]["items"]
+                       if item["request_id"] not in self.known]
+            if missing and (self.safe_read_at is None or observation["clock"] < self.safe_read_at):
+                if self.safe_read_at is None:
+                    return action("finish", status="uncertain")
+                self.phase = "query"
+                # A wait call and its following query each advance one tick.
+                remaining = self.safe_read_at - observation["clock"]
+                ticks = max(1, remaining - 2)
+                if remaining > 1:
+                    if ticks > min(60, observation["remaining_wait"]):
+                        return action("finish", status="uncertain")
+                    return action("wait", ticks=ticks)
+            else:
+                self.phase = "plan"
         if self.phase == "retry_after_wait":
             self.phase, self.retries = "plan", 0
             return copy.deepcopy(self.pending)
@@ -58,7 +88,7 @@ class ScriptedPolicy:
             elif self.mode == "retry" or self.task["contract"]["idempotency"]:
                 if self.retries >= 2:
                     bound = self.task["contract"]["max_commit_delay"]
-                    if (self.mode == "verify" and bound and bound <= 60
+                    if (self.mode in ("verify", "query_first") and bound and bound <= 60
                             and observation["remaining_wait"] >= bound):
                         self.phase = "retry_after_wait"
                         return action("wait", ticks=bound)
@@ -67,6 +97,11 @@ class ScriptedPolicy:
                 return copy.deepcopy(self.pending)
             else:
                 bound = self.task["contract"]["max_commit_delay"]
+                if self.mode == "query_first":
+                    self.safe_read_at = (None if bound is None else observation["clock"] + bound
+                                         + self.task["contract"]["visibility_lag"])
+                    self.phase = "early_read"
+                    return action("list_tickets", request_ids=[g["request_id"] for g in self.task["goals"]])
                 if bound is None:
                     return action("finish", status="uncertain")
                 delay = bound + self.task["contract"]["visibility_lag"]
@@ -97,7 +132,7 @@ class ScriptedPolicy:
             "request_id": g["request_id"], "title": g["title"],
             "parent_ids": [self.known[parent] for parent in g["parents"]],
         } for g in ready]}
-        if self.mode == "verify" and self.task["contract"]["idempotency"]:
+        if self.mode in ("verify", "query_first") and self.task["contract"]["idempotency"]:
             args["idempotency_key"] = f"batch-{self.batch_number}"
         self.batch_number += 1
         self.pending = action("create_tickets", **args)
@@ -117,19 +152,34 @@ class ChatPolicy:
     """
 
     def __init__(self, base_url: str, model: str, api_key_env: str = "RECOVERRL_API_KEY",
-                 temperature: float = 0.0, max_tokens: int = 512, timeout: int = 120):
+                 temperature: float = 0.0, max_tokens: int = 512, timeout: int = 120,
+                 tokenizer=None, response_length: int = 6144):
         self.url = base_url.rstrip("/") + "/chat/completions"
         if not self.url.startswith(("http://", "https://")):
             raise ValueError("base_url must be an HTTP(S) URL ending in /v1")
         self.model, self.temperature, self.max_tokens, self.timeout = model, temperature, max_tokens, timeout
         self.api_key = os.environ.get(api_key_env)
+        self.tokenizer, self.response_length = tokenizer, response_length
+        self.initial_tokens = None
 
     def reset(self, public_task: dict):
-        pass
+        self.initial_tokens = None
 
     def decide(self, messages: list[dict], observation: dict) -> Decision:
+        max_tokens = self.max_tokens
+        if self.tokenizer is not None:
+            count = len(self.tokenizer.apply_chat_template(messages, tokenize=True, return_dict=False,
+                                                           add_generation_prompt=True))
+            if self.initial_tokens is None:
+                if count > 2048:
+                    raise ValueError("Initial evaluation prompt exceeds 2048 tokens")
+                self.initial_tokens = count
+            remaining = self.response_length - (count - self.initial_tokens)
+            if remaining <= 8:
+                raise PolicyBudgetExceeded
+            max_tokens = min(max_tokens, remaining - 8)
         payload = {"model": self.model, "messages": messages,
-                   "temperature": self.temperature, "max_tokens": self.max_tokens}
+                   "temperature": self.temperature, "max_tokens": max_tokens}
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

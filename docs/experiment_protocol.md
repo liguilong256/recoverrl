@@ -1,5 +1,7 @@
 # Experiment protocol v0.1
 
+The original `recoverrl generate` suite below remains the environment smoke test. Formal experiments now use `recoverrl.study prepare` and [recovery-v1](research_plan.md), which defines the new workflow/timing splits, counts, common SFT initialization and experiment matrix. Metric definitions and pairing rules on this page apply to both suites.
+
 ## Freeze before evaluation
 
 Record the Git commit, model source/revision, tokenizer, prompt protocol, data checksums, all task IDs, fault/contract composition, reward coefficients, training seed, generated tokens, environment steps, GPU hours and endpoint sampling parameters. Dataset seeds are distinct from training seeds.
@@ -64,7 +66,7 @@ Token cost is configurable. The completion-only GRPO control uses `task_success`
 
 Actions are strict JSON, with tool observations returned as the next user message. There is no automatic JSON repair or native function calling. Malformed actions consume environment steps. Tools operate on a simulated service rather than external APIs.
 
-HTTP evaluation limits generated tokens per turn and environment steps per episode. RL limits the entire response sequence, including observations. Match these budgets and record actual usage before comparing model costs; the defaults alone do not give an equal-budget comparison. Token usage is null when the endpoint does not supply it, and zero for scripted policies.
+The low-level HTTP evaluator optionally enables a full response/context budget with `--tokenizer` and `--response-length`. The study entry point requires the served checkpoint's tokenizer and uses a 6,144-token budget, including observations, with at most 512 generated tokens per turn. Exhaustion settles pending effects and records `termination=token_budget`. HTTP history is re-tokenized; RL retains generated token IDs through Continuous Token. Inspect alignment and truncation rates on the server rather than assuming exact token equivalence. Token usage is null when the endpoint does not supply it, and zero for scripted policies.
 
 ## Related work
 

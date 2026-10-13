@@ -18,3 +18,14 @@ Pending on Linux/A800: resolving and installing the entire GPU dependency stack,
 The local environment now uses Miniconda with Python 3.11.15. All 37 CPU tests, lint, `pip check`, pinned verl configuration composition and the 80-dialogue tokenizer check pass in this environment. A fresh quickstart evaluation completed 240 episodes across the three scripted policies.
 
 Local creation used cached Anaconda packages after conda-forge downloads failed. The repository's `environment.yml` uses conda-forge; that exact setup passed in [GitHub Actions](https://github.com/liguilong256/recoverrl/actions/runs/38364026350) on Windows and Linux, with Python 3.11 and 3.12. The separate verl configuration job also passed. These checks do not install or exercise the GPU training stack.
+
+## Recovery study v1 — 2026-10-13
+
+- 46 CPU tests pass in the local Conda environment, including independent workflow/timing splits, hidden-fault pairing, query-first recovery timing, data hash checks, SFT source isolation, experiment ordering/failure handling and paired report export.
+- Prepared 5,120 RL training episodes, 640 validation episodes and four test sets of 1,280 episodes each. The successful query-first training trajectories yield 3,661 unique SFT dialogues.
+- Checked all 5,120 training dialogues with the pinned Qwen tokenizer: maximum prompt 734 tokens, response 1,998 tokens, full dialogue 2,732 tokens. Checked all 1,280 joint-shift dialogues: maximum prompt 793, response 1,898, full dialogue 2,673. These checks cover scripted reference traces, not arbitrary model outputs.
+- Completed 20,480 scripted test episodes: four held-out sets × 1,280 episodes × four policies. Portable aggregates are in `research_baselines.json`. Both strong references reach 100% exact success; their call/wait costs differ.
+- The original 6,000-episode baseline report reproduces byte-for-byte. The study configuration (6,144 response tokens, complete validation set) composes against the pinned verl source. Fourteen planned jobs were generated without GPU execution: one smoke update, one SFT, six main runs and six ablations.
+- Mock HTTP evaluation verifies that context-budget exhaustion stops further requests and still settles pending writes. Report export checks coverage, frozen dataset identity and evaluation settings, and keeps each training run separate.
+
+GPU installation, inference, SFT, real GRPO updates, memory sizing and trained-model comparisons remain pending on the server.

@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Optional
 
 FAULTS = ("none", "timeout_before", "timeout_after", "partial", "late_commit")
-FAMILIES = ("single", "batch", "chain", "fanout")
+FAMILIES = ("single", "batch", "chain", "fanout", "diamond", "dag")
 
 
 @dataclass(frozen=True)

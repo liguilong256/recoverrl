@@ -42,13 +42,15 @@ def main(argv=None):
     evaluate = sub.add_parser("evaluate")
     evaluate.add_argument("--dataset")
     evaluate.add_argument("--tasks", type=int, default=20)
-    evaluate.add_argument("--policies", nargs="+", choices=["once", "retry", "verify", "chat"],
+    evaluate.add_argument("--policies", nargs="+", choices=["once", "retry", "verify", "query_first", "chat"],
                           default=["once", "retry", "verify"])
     evaluate.add_argument("--output", default="runs/dev")
     evaluate.add_argument("--base-url", default="http://127.0.0.1:8000/v1")
     evaluate.add_argument("--model", default="Qwen/Qwen3-4B-Instruct-2507")
     evaluate.add_argument("--temperature", type=float, default=0.0)
     evaluate.add_argument("--max-tokens", type=int, default=512)
+    evaluate.add_argument("--tokenizer", help="Local tokenizer path; enables a shared response/context budget")
+    evaluate.add_argument("--response-length", type=int, default=6144)
     evaluate.add_argument("--reward", choices=["completion", "constrained"], default="constrained")
     compare = sub.add_parser("compare")
     compare.add_argument("left")
@@ -60,6 +62,7 @@ def main(argv=None):
     sft = sub.add_parser("export-sft")
     sft.add_argument("--dataset", required=True)
     sft.add_argument("--output", required=True)
+    sft.add_argument("--policy", choices=["verify", "query_first"], default="verify")
     args = parser.parse_args(argv)
     if args.command == "generate":
         for split in args.splits:
@@ -68,6 +71,12 @@ def main(argv=None):
             write_jsonl(path, [spec.to_dict() for spec in specs])
             print(f"{path}: {args.tasks} base tasks, {len(specs)} episodes")
     elif args.command == "evaluate":
+        if args.max_tokens < 1 or args.response_length < 1:
+            parser.error("Token limits must be positive")
+        tokenizer = None
+        if "chat" in args.policies and args.tokenizer:
+            from transformers import AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained(args.tokenizer, trust_remote_code=False)
         specs = read_specs(args.dataset) if args.dataset else make_suite("dev", args.tasks)
         if not specs or len({s.task_id for s in specs}) != len(specs):
             parser.error("Dataset must contain nonempty, unique task specs")
@@ -84,7 +93,8 @@ def main(argv=None):
         summary = {}
         for name in args.policies:
             policy = (ChatPolicy(args.base_url, args.model, temperature=args.temperature,
-                                 max_tokens=args.max_tokens) if name == "chat" else ScriptedPolicy(name))
+                                 max_tokens=args.max_tokens, tokenizer=tokenizer,
+                                 response_length=args.response_length) if name == "chat" else ScriptedPolicy(name))
             rows = []
             # Stream each trace so completed work remains inspectable on endpoint failure.
             with (output / f"{name}.jsonl").open("w", encoding="utf-8", newline="\n") as stream:
@@ -96,7 +106,12 @@ def main(argv=None):
                     stream.flush()
             by_fault = {mode: aggregate([r for r in rows if r["spec"]["fault"]["mode"] == mode])
                         for mode in sorted({r["spec"]["fault"]["mode"] for r in rows})}
-            summary[name] = {"overall": aggregate(rows), "by_fault": by_fault}
+            by_family = {family: aggregate([r for r in rows if r["spec"]["family"] == family])
+                         for family in sorted({r["spec"]["family"] for r in rows})}
+            by_keys = {str(keys).lower(): aggregate([r for r in rows if r["spec"]["contract"]["idempotency"] == keys])
+                       for keys in sorted({r["spec"]["contract"]["idempotency"] for r in rows})}
+            summary[name] = {"overall": aggregate(rows), "by_fault": by_fault,
+                             "by_family": by_family, "by_idempotency": by_keys}
             print(f"{name}: {json.dumps(summary[name]['overall'], sort_keys=True)}")
         _save_json(output / "summary.json", summary)
         manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
@@ -113,7 +128,7 @@ def main(argv=None):
             parser.error("SFT export accepts training tasks only")
         rows = []
         for spec in specs:
-            episode = run_episode(spec, ScriptedPolicy("verify"))
+            episode = run_episode(spec, ScriptedPolicy(args.policy))
             if episode["metrics"]["exact_success"]:
                 rows.append({"messages": episode["messages"], "source_task_id": spec.task_id})
         write_jsonl(args.output, rows)

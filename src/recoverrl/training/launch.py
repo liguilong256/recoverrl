@@ -18,8 +18,8 @@ def overrides(args, agent_config: Path) -> list[str]:
         "algorithm.adv_estimator": "grpo", "algorithm.use_kl_in_reward": False,
         "data.train_files": str(Path(args.train).resolve()), "data.val_files": str(Path(args.val).resolve()),
         "data.train_batch_size": args.batch_size, "data.val_batch_size": 16,
-        "data.val_max_samples": 80, "data.max_prompt_length": 2048,
-        "data.max_response_length": 4096, "data.truncation": "error", "data.seed": args.seed,
+        "data.val_max_samples": args.val_max_samples, "data.max_prompt_length": 2048,
+        "data.max_response_length": args.response_length, "data.truncation": "error", "data.seed": args.seed,
         "data.dataloader_num_workers": 0,
         "actor_rollout_ref.model.path": str(Path(args.model).resolve()),
         "actor_rollout_ref.model.enable_gradient_checkpointing": True,
@@ -42,7 +42,7 @@ def overrides(args, agent_config: Path) -> list[str]:
         "actor_rollout_ref.rollout.temperature": 0.8, "actor_rollout_ref.rollout.top_p": 0.95,
         "actor_rollout_ref.rollout.tensor_model_parallel_size": 1,
         "actor_rollout_ref.rollout.gpu_memory_utilization": 0.35,
-        "actor_rollout_ref.rollout.max_model_len": 8192,
+        "actor_rollout_ref.rollout.max_model_len": max(8192, 2048 + args.response_length),
         "actor_rollout_ref.rollout.max_num_seqs": 16,
         "actor_rollout_ref.rollout.enforce_eager": True,
         "actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu": 1,
@@ -74,6 +74,8 @@ def main(argv=None):
     parser.add_argument("--gpus", type=int, default=2)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--group-size", type=int, default=4)
+    parser.add_argument("--response-length", type=int, default=4096)
+    parser.add_argument("--val-max-samples", type=int, default=80, help="-1 evaluates the full validation set")
     parser.add_argument("--duplicate-penalty", type=float, default=1.0)
     parser.add_argument("--call-cost", type=float, default=0.01)
     parser.add_argument("--wait-cost", type=float, default=0.001)
@@ -84,6 +86,8 @@ def main(argv=None):
         parser.error("Positive GPU/step/batch sizes and group-size >= 2 required")
     if args.batch_size % args.gpus:
         parser.error("batch-size must be divisible by gpus")
+    if args.response_length < 512 or args.val_max_samples == 0 or args.val_max_samples < -1:
+        parser.error("response-length >= 512 and val-max-samples == -1 or positive required")
     output = Path(args.output)
     if output.exists() and any(output.iterdir()):
         parser.error("Output directory must be empty; use a new directory for every run")

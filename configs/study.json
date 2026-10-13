@@ -1,0 +1,12 @@
+{
+  "study": "recovery-v1",
+  "data_seed": 0,
+  "train_tasks": 256,
+  "val_tasks": 32,
+  "test_tasks": 64,
+  "training_seeds": [42, 43, 44],
+  "steps": 200,
+  "batch_size": 16,
+  "group_size": 4,
+  "response_length": 6144
+}

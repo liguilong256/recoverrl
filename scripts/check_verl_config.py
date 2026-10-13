@@ -16,7 +16,8 @@ def main():
     args = parser.parse_args()
     with tempfile.TemporaryDirectory() as temp:
         output = Path(temp) / "launch"
-        subprocess.run([sys.executable, "-m", "recoverrl.training.launch", "--dry-run", "--output", str(output)],
+        subprocess.run([sys.executable, "-m", "recoverrl.training.launch", "--dry-run", "--output", str(output),
+                        "--response-length", "6144", "--val-max-samples", "-1"],
                        check=True, capture_output=True, text=True)
         command = json.loads((output / "launch.json").read_text())["argv"]
         config_dir = str((Path(args.verl) / "verl/trainer/config").resolve())
@@ -25,6 +26,9 @@ def main():
         assert config.actor_rollout_ref.rollout.agent.default_agent_loop == "recoverrl"
         assert config.algorithm.adv_estimator == "grpo"
         assert config.trainer.n_gpus_per_node == 2
+        assert config.data.max_response_length == 6144
+        assert config.data.val_max_samples == -1
+        assert config.actor_rollout_ref.rollout.max_model_len >= config.data.max_prompt_length + 6144
     print("verl Hydra config composition passed (no GPU execution).")
 
 

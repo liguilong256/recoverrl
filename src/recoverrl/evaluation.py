@@ -14,6 +14,7 @@ import time
 from . import __version__
 from .environment import RecoveryEnv
 from .protocol import messages_for, parse_action, tool_message
+from .policies import PolicyBudgetExceeded
 from .rewards import RewardConfig, score
 from .specs import TaskSpec
 
@@ -26,8 +27,13 @@ def run_episode(spec: TaskSpec, policy, reward: RewardConfig | None = None) -> d
     policy.reset(spec.public_view())
     generated_tokens, prompt_tokens, usage_available = 0, 0, True
     started = time.perf_counter()
+    termination = "environment"
     while not env.done:
-        decision = policy.decide(copy.deepcopy(messages), copy.deepcopy(observation))
+        try:
+            decision = policy.decide(copy.deepcopy(messages), copy.deepcopy(observation))
+        except PolicyBudgetExceeded:
+            termination = "token_budget"
+            break
         messages.append({"role": "assistant", "content": decision.text})
         for value in (decision.generated_tokens, decision.prompt_tokens):
             if value is None:
@@ -52,7 +58,7 @@ def run_episode(spec: TaskSpec, policy, reward: RewardConfig | None = None) -> d
     return {
         "version": __version__, "task_id": spec.task_id, "cluster_id": cluster,
         "spec": spec.to_dict(), "reward_config": asdict(reward), "metrics": metrics,
-        "messages": messages, "trace": env.history, "ledger": env.ledger,
+        "messages": messages, "trace": env.history, "ledger": env.ledger, "termination": termination,
     }
 
 
