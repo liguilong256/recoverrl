@@ -1,6 +1,6 @@
 # Server runbook
 
-This recipe targets one Linux host with two A800 80GB GPUs and Python 3.11/3.12.
+This recipe targets one Linux host with two A800 80GB GPUs and a Miniconda environment running Python 3.11.
 It has **not yet completed a GPU run**. Start with the one-update smoke test; do not schedule the full experiment matrix first.
 
 ## 1. Prepare an isolated environment
@@ -8,12 +8,14 @@ It has **not yet completed a GPU run**. Start with the one-update smoke test; do
 ```bash
 git clone https://github.com/liguilong256/recoverrl.git
 cd recoverrl
-python3.11 -m venv .venv
-source .venv/bin/activate
+conda env create -f environment.yml
+conda activate recoverrl
 bash scripts/setup_server.sh
 ```
 
-The script installs a pinned verl checkout under `.deps/verl`, installs a candidate vLLM/PyTorch/Transformers combination, builds FlashAttention and runs a preflight check. A compatible NVIDIA driver and, when compiling FlashAttention, CUDA toolkit are host prerequisites. It does not modify the driver. If installation fails, save the exact error and host CUDA/driver versions before changing constraints.
+The environment file installs Python and pip from conda-forge. The setup script then installs a pinned verl checkout under `.deps/verl`, installs a candidate vLLM/PyTorch/Transformers combination through that environment's pip, builds FlashAttention and runs a preflight check. It requires an active Conda environment other than `base`. A compatible NVIDIA driver and, when compiling FlashAttention, CUDA toolkit are host prerequisites. It does not modify the driver. If installation fails, save the exact error and host CUDA/driver versions before changing constraints.
+
+If the environment already exists, use `conda activate recoverrl` instead of creating it again. If your shell does not recognize `conda activate`, initialize it with `conda init bash` and reopen the terminal. Conda owns the Python environment; GPU packages use the versions in `configs/gpu-constraints.txt` rather than a separate Conda CUDA stack.
 
 The stack was selected by inspecting upstream APIs and package dependency metadata. Full CUDA compatibility is not implied by that inspection. Record a successful environment with `python -m pip freeze`; the training launcher saves its own package list.
 
@@ -30,9 +32,10 @@ The model downloader uses the immutable revision in `configs/versions.json`. It 
 
 ## 2. Evaluate the base model first
 
-In a separate terminal in the same virtual environment:
+In a separate terminal, activate the same Conda environment:
 
 ```bash
+conda activate recoverrl
 CUDA_VISIBLE_DEVICES=0 vllm serve models/qwen3-4b \
   --served-model-name recoverrl-policy --max-model-len 8192 \
   --gpu-memory-utilization 0.85 --port 8000

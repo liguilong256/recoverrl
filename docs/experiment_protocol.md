@@ -37,3 +37,37 @@ Task-cluster bootstrap accounts for repeated fault variants of the same task. It
 ## Research gate
 
 Do not call a better score than blind retry a method contribution. The strong rule already achieves 100% exact success on this small bounded suite. First ask whether a learned policy transfers or trades cost against success better on a broader, held-out distribution. If rules remain sufficient, report that outcome and position the release as experimental infrastructure.
+
+## Data and rewards
+
+```bash
+python -m recoverrl generate --tasks 100 --output data
+python -m recoverrl export-verl --dataset data/train.jsonl --output data/train.parquet
+python -m recoverrl export-sft --dataset data/train.jsonl --output data/sft_train.jsonl
+```
+
+`train`, `val` and `test_id` use disjoint seeds within the single/batch task families. `test_ood` holds out chain/fanout dependency structures. Fault variants of the same base task share their visible prompt; the serialized private spec goes only to the environment and scorer. SFT demonstrations are successful training-split trajectories from the scripted verification policy.
+
+The default constrained reward is:
+
+```text
+task_success
+  - 1.0 * duplicate_effects
+  - 1.0 * unrequested_effects
+  - 0.01 * tool_calls
+  - 0.001 * wait_ticks
+```
+
+Token cost is configurable. The completion-only GRPO control uses `task_success`. Querying and stopping do not earn a separate positive reward.
+
+## Action protocol and budgets
+
+Actions are strict JSON, with tool observations returned as the next user message. There is no automatic JSON repair or native function calling. Malformed actions consume environment steps. Tools operate on a simulated service rather than external APIs.
+
+HTTP evaluation limits generated tokens per turn and environment steps per episode. RL limits the entire response sequence, including observations. Match these budgets and record actual usage before comparing model costs; the defaults alone do not give an equal-budget comparison. Token usage is null when the endpoint does not supply it, and zero for scripted policies.
+
+## Related work
+
+[ToolRL](https://arxiv.org/abs/2504.13958), [ToolRL-DR](https://arxiv.org/abs/2605.11928) and [Bench2Robust](https://arxiv.org/abs/2608.11977) study tool learning and recovery training. [Verified Tool Calls](https://arxiv.org/abs/2608.02645) and [LIMBO](https://arxiv.org/abs/2609.29095) address ambiguous execution outcomes, verification and idempotency.
+
+RecoverRL is an independent experimental implementation, not an official reproduction of these projects. Fault injection, verification before retry and effect-based evaluation are existing ideas. Any algorithmic contribution needs evidence from the comparisons above.

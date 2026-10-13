@@ -2,8 +2,23 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Run inside your own Python >= 3.11 virtual environment on a CUDA Linux host.
-python -c 'import sys; assert sys.version_info >= (3, 11), "Python >= 3.11 required"'
+# Create the environment with: conda env create -f environment.yml
+if [[ -z "${CONDA_PREFIX:-}" || "${CONDA_DEFAULT_ENV:-}" == "base" ]]; then
+  echo "Activate the project environment first: conda activate recoverrl" >&2
+  exit 1
+fi
+python - <<'PY'
+import os
+from pathlib import Path
+import sys
+
+if sys.platform != "linux":
+    raise SystemExit("GPU setup requires a Linux CUDA host.")
+if sys.version_info < (3, 11):
+    raise SystemExit("Python >= 3.11 required.")
+if Path(sys.prefix).resolve() != Path(os.environ["CONDA_PREFIX"]).resolve():
+    raise SystemExit("Python is outside the active Conda environment; reactivate recoverrl.")
+PY
 VERL_COMMIT=3e0d79ea8c38264bcaddc64de1b3465589580320
 mkdir -p .deps
 if [[ ! -d .deps/verl ]]; then

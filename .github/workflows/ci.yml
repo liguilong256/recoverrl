@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash -el {0}
+
 jobs:
   test:
     strategy:
@@ -16,9 +20,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: conda-incubator/setup-miniconda@v4
         with:
+          environment-file: environment.yml
+          activate-environment: recoverrl
           python-version: ${{ matrix.python }}
+          channels: conda-forge
+          auto-activate: false
+      - run: python -c "import sys; assert '.'.join(map(str, sys.version_info[:2])) == '${{ matrix.python }}'"
       - run: python -m pip install -e ".[dev,data]"
       - run: python -m ruff check src tests scripts
       - run: python -m unittest discover -s tests -v
@@ -35,9 +44,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: conda-incubator/setup-miniconda@v4
         with:
-          python-version: '3.12'
+          environment-file: environment.yml
+          activate-environment: recoverrl
+          channels: conda-forge
+          auto-activate: false
       - uses: actions/checkout@v4
         with:
           repository: verl-project/verl
