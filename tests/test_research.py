@@ -88,7 +88,8 @@ class ResearchTests(unittest.TestCase):
             self.assertEqual(len(main), 6)
             self.assertEqual(len([job for job in plan["jobs"] if job["stage"] == "ablation"]), 6)
             for job in main:
-                self.assertEqual(job["argv"][job["argv"].index("--model") + 1], str(root / "plan" / "sft"))
+                self.assertEqual(Path(job["argv"][job["argv"].index("--model") + 1]).resolve(),
+                                 (root / "plan" / "sft").resolve())
                 self.assertEqual(job["argv"][job["argv"].index("--val-max-samples") + 1], "-1")
             with contextlib.redirect_stdout(io.StringIO()):
                 execute(root / "plan" / "plan.json", stage="main", dry_run=True)
