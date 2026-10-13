@@ -1,0 +1,8 @@
+{
+  "verl_commit": "3e0d79ea8c38264bcaddc64de1b3465589580320",
+  "model_id": "Qwen/Qwen3-4B-Instruct-2507",
+  "model_revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+  "vllm": "0.26.0",
+  "transformers": "5.12.0",
+  "status": "Source/API and dependency metadata checked; GPU execution pending."
+}

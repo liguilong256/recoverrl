@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recoverrl"
+version = "0.1.0"
+description = "Reproducible recovery-policy experiments for agents facing ambiguous tool outcomes"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = []
+
+[project.optional-dependencies]
+data = ["pyarrow>=17,<22"]
+dev = ["ruff==0.12.12"]
+tokenizer = ["transformers==5.12.0", "jinja2==3.1.6"]
+
+[project.scripts]
+recoverrl = "recoverrl.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
